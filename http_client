@@ -65,6 +65,8 @@ if __name__ == '__main__':
                         help='server address')
     parser.add_argument('--output-format', default='text', type=str,
                         help='output format', choices=['text', 'json'])
+    parser.add_argument('--http_params', default='text', type=str,
+                        help='http parameters for get request')
     args = parser.parse_args()
 
     unix = False
@@ -75,10 +77,16 @@ if __name__ == '__main__':
         luaf.write(luascript)
         lua_script_path = luaf.name
 
-    wrk = ['wrk', '--latency', '--duration={}s'.format(args.duration),
+    if not args.http_params:
+        wrk = ['wrk', '--latency', '--duration={}s'.format(args.duration),
            '--connections={}'.format(args.concurrency),
            '--script={}'.format(lua_script_path),
            'http://{}/{}'.format(args.addr, args.msize)]
+    else:
+        wrk = ['wrk', '--latency', '--duration={}s'.format(args.duration),
+           '--connections={}'.format(args.concurrency),
+           '--script={}'.format(lua_script_path),
+           'http://{}'.format(args.addr)]
 
     try:
         wrk_run = subprocess.Popen(wrk, universal_newlines=True,

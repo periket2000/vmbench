@@ -2,3 +2,8 @@
 1. Install wrk -> brew install wrk
 2. Run the server -> python asyncio_http_server.py --type uvloop+httptools
 3. Run the client -> python run_benchmarks_marco --save-html=report.html --benchmarks=http-uvloop-httptools
+
+# si quieres checkear un endpoint existente por GET:
+
+1. Exportar la request -> export TCPADDR="localhost:8888/dqt/clusters/?page=1&per_page=10&score_high=1"
+2. Ejecutar el client  -> python run_benchmarks_marco --save-html=report.html --benchmarks=http-uvloop-httptools

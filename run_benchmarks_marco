@@ -33,13 +33,17 @@ nodejs = ['nodejs']
 
 echo_client = ['./echo_client', '--output-format=json']
 
-tcp_address = '127.0.0.1:25000'
+tcp_address = os.getenv('TCPADDR', '127.0.0.1:25000')
+http_client_flag = os.getenv('TCPADDR', None)
+#tcp_address = '127.0.0.1:25000'
 unix_address = 'file:{_socket}/server.sock'.format(_socket=_socket)
 
 tcp_client = echo_client + ['--addr={}'.format(tcp_address)]
 unix_client = echo_client + ['--addr={}'.format(unix_address)]
 http_client = ['./http_client', '--output-format=json',
                '--addr={}'.format(tcp_address)]
+if http_client_flag:
+    http_client.append('--http_params={}'.format('True'))
 readline_client = tcp_client + ['--mpr=5']
 
 benchmarks = [{
