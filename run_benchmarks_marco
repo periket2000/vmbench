@@ -1,0 +1,509 @@
+#!/usr/bin/env python3
+
+
+import argparse
+import collections
+import datetime
+import json
+import os
+import os.path
+import re
+import socket
+import string
+import subprocess
+import sys
+import textwrap
+import time
+
+
+_dir = os.path.dirname(__file__)
+
+_cache = os.path.abspath(os.path.join(_dir, '.cache'))
+_socket = os.path.abspath(os.path.join(_dir, 'sockets'))
+
+server_base = ['docker', 'run', '--rm', '-t', '-p', '25000:25000',
+               '-e', 'UID={}'.format(os.geteuid()),
+               '-e', 'GID={}'.format(os.getegid()),
+               '-v', '{_cache}:/var/lib/cache'.format(_cache=_cache),
+               '-v', '{_socket}:/tmp/sockets'.format(_socket=_socket),
+               '--name', 'magicbench', 'magic/benchmark']
+
+python = ['vex', 'bench', 'python']
+nodejs = ['nodejs']
+
+echo_client = ['./echo_client', '--output-format=json']
+
+tcp_address = '127.0.0.1:25000'
+unix_address = 'file:{_socket}/server.sock'.format(_socket=_socket)
+
+tcp_client = echo_client + ['--addr={}'.format(tcp_address)]
+unix_client = echo_client + ['--addr={}'.format(unix_address)]
+http_client = ['./http_client', '--output-format=json',
+               '--addr={}'.format(tcp_address)]
+readline_client = tcp_client + ['--mpr=5']
+
+benchmarks = [{
+    'name': 'tcpecho-gevent-sockets',
+    'title': 'TCP echo server (gevent)',
+    'server': python + ['/usr/src/servers/gevecho.py'],
+    'server_address': tcp_address,
+    'client': tcp_client,
+}, {
+    'name': 'tcpecho-tornado-protocol',
+    'title': 'TCP echo server (tornado)',
+    'server': python + ['/usr/src/servers/torecho.py'],
+    'server_address': tcp_address,
+    'client': tcp_client,
+}, {
+    'name': 'readline-tornado',
+    'title': 'Streams readline (tornado)',
+    'server': python + ['/usr/src/servers/torecho_readline.py'],
+    'server_address': tcp_address,
+    'client': readline_client,
+}, {
+    'name': 'tcpecho-twisted-protocol',
+    'title': 'TCP echo server (twisted)',
+    'server': python + ['/usr/src/servers/twistedecho.py'],
+    'server_address': tcp_address,
+    'client': tcp_client,
+}, {
+    'name': 'tcpecho-curio-sockets',
+    'title': 'TCP echo server (curio)',
+    'server': python + ['/usr/src/servers/curioecho.py'],
+    'server_address': tcp_address,
+    'client': tcp_client,
+}, {
+    'name': 'readline-curio',
+    'title': 'Streams readline (curio)',
+    'server': python + ['/usr/src/servers/curioecho_streams.py'],
+    'server_address': tcp_address,
+    'client': readline_client,
+}, {
+    'name': 'tcpecho-nodejs-streams',
+    'title': 'TCP echo server (nodejs)',
+    'server': nodejs + ['/usr/src/servers/nodeecho.js'],
+    'server_address': tcp_address,
+    'client': tcp_client,
+}, {
+    'name': 'tcpecho-golang-sockets',
+    'title': 'TCP echo server (golang)',
+    'server': ['/usr/src/servers/goecho'],
+    'server_address': tcp_address,
+    'client': tcp_client,
+}, {
+    'name': 'tcpecho-asyncio-protocol',
+    'title': 'TCP echo server (asyncio)',
+    'server': python + ['/usr/src/servers/asyncioecho.py',
+                        '--addr=0.0.0.0:25000',
+                        '--proto'],
+    'server_address': tcp_address,
+    'client': tcp_client,
+}, {
+    'name': 'readline-asyncio',
+    'title': 'Streams readline (asyncio)',
+    'server': python + ['/usr/src/servers/asyncioecho.py',
+                        '--addr=0.0.0.0:25000',
+                        '--streams'],
+    'server_address': tcp_address,
+    'client': readline_client,
+}, {
+    'name': 'tcpecho-asyncio-sockets',
+    'title': 'TCP echo server (asyncio/sockets)',
+    'server': python + ['/usr/src/servers/asyncioecho.py',
+                        '--addr=0.0.0.0:25000'],
+    'server_address': tcp_address,
+    'client': tcp_client,
+}, {
+    'name': 'unixecho-asyncio-protocol',
+    'title': 'Unix socket echo server (asyncio)',
+    'server': python + ['/usr/src/servers/asyncioecho.py',
+                        '--addr=file:/tmp/sockets/server.sock',
+                        '--proto'],
+    'server_address': unix_address,
+    'client': unix_client,
+}, {
+    'name': 'unixecho-asyncio-streams',
+    'title': 'Unix socket echo server (asyncio/streams)',
+    'server': python + ['/usr/src/servers/asyncioecho.py',
+                        '--addr=file:/tmp/sockets/server.sock',
+                        '--streams'],
+    'server_address': unix_address,
+    'client': unix_client,
+}, {
+    'name': 'tcpecho-uvloop-protocol',
+    'title': 'TCP echo server (uvloop)',
+    'server': python + ['/usr/src/servers/asyncioecho.py',
+                        '--addr=0.0.0.0:25000',
+                        '--proto', '--uvloop'],
+    'server_address': tcp_address,
+    'client': tcp_client,
+}, {
+    'name': 'readline-uvloop',
+    'title': 'Streams readline (uvloop)',
+    'server': python + ['/usr/src/servers/asyncioecho.py',
+                        '--addr=0.0.0.0:25000',
+                        '--streams', '--uvloop'],
+    'server_address': tcp_address,
+    'client': readline_client,
+}, {
+    'name': 'tcpecho-uvloop-sockets',
+    'title': 'TCP echo server (uvloop/sockets)',
+    'server': python + ['/usr/src/servers/asyncioecho.py',
+                        '--addr=0.0.0.0:25000',
+                        '--uvloop'],
+    'server_address': tcp_address,
+    'client': tcp_client,
+}, {
+    'name': 'unixecho-uvloop-protocol',
+    'title': 'Unix socket echo server (uvloop)',
+    'server': python + ['/usr/src/servers/asyncioecho.py',
+                        '--addr=file:/tmp/sockets/server.sock',
+                        '--proto', '--uvloop'],
+    'server_address': unix_address,
+    'client': unix_client,
+}, {
+    'name': 'unixecho-uvloop-streams',
+    'title': 'Unix socket echo server (uvloop/streams)',
+    'server': python + ['/usr/src/servers/asyncioecho.py',
+                        '--addr=file:/tmp/sockets/server.sock',
+                        '--streams', '--uvloop'],
+    'server_address': unix_address,
+    'client': unix_client,
+}, {
+    'name': 'http-asyncio-aiohttp',
+    'title': 'HTTP server (asyncio/aiohttp)',
+    'server': python + ['/usr/src/servers/asyncio_http_server.py',
+                        '--type=asyncio+aiohttp',
+                        '--addr=0.0.0.0:25000'],
+    'server_address': tcp_address,
+    'client': http_client,
+}, {
+    'name': 'http-asyncio-httptools',
+    'title': 'HTTP server (asyncio/httptools)',
+    'server': python + ['/usr/src/servers/asyncio_http_server.py',
+                        '--type=asyncio+httptools',
+                        '--addr=0.0.0.0:25000'],
+    'server_address': tcp_address,
+    'client': http_client,
+}, {
+    'name': 'http-uvloop-aiohttp',
+    'title': 'HTTP server (uvloop/aiohttp)',
+    'server': python + ['/usr/src/servers/asyncio_http_server.py',
+                        '--type=uvloop+aiohttp',
+                        '--addr=0.0.0.0:25000'],
+    'server_address': tcp_address,
+    'client': http_client,
+}, {
+    'name': 'http-uvloop-httptools',
+    'title': 'HTTP server (uvloop/httptools)',
+    'server': python + ['/usr/src/servers/asyncio_http_server.py',
+                        '--type=uvloop+httptools',
+                        '--addr=0.0.0.0:25000'],
+    'server_address': tcp_address,
+    'client': http_client,
+}, {
+    'name': 'http-nodejs',
+    'title': 'HTTP server (nodejs)',
+    'server': nodejs + ['/usr/src/servers/nodejs_http_server.js'],
+    'server_address': tcp_address,
+    'client': http_client,
+}, {
+    'name': 'http-golang',
+    'title': 'HTTP server (golang)',
+    'server': ['/usr/src/servers/gohttp'],
+    'server_address': tcp_address,
+    'client': http_client,
+}]
+
+
+def abort(msg):
+    print(msg, file=sys.stdout)
+    sys.exit(1)
+
+
+def format_report(data, target_file):
+    tpl_path = os.path.join(os.path.dirname(__file__), 'report', 'report.html')
+
+    with open(tpl_path, 'r') as f:
+        tpl = string.Template(f.read())
+
+    now = datetime.datetime.now()
+    date = now.strftime('%c')
+    platform = '{system} ({dist}, {arch}) on {cpu}'.format(
+        system=data['platform']['system'],
+        dist=data['platform']['distribution'],
+        arch=data['platform']['arch'],
+        cpu=data['platform']['cpu'],
+    )
+
+    i = 0
+
+    entries = collections.OrderedDict()
+    btypes = []
+
+    for benchmark in data['benchmarks']:
+        entry = {}
+
+        bench = benchmark['name'].split('-')
+        btype = bench[0]
+        if btype not in btypes:
+            btypes.append(btype)
+
+        bname = ' '.join(bench[1:])
+
+        try:
+            entry = entries[bname]
+        except KeyError:
+            entry = entries[bname] = {
+                'name': bname,
+                'benchmarks': collections.OrderedDict()
+            }
+
+        try:
+            brecords = entry['benchmarks'][btype]
+        except KeyError:
+            brecords = entry['benchmarks'][btype] = collections.OrderedDict((
+                ('Requests/sec', []),
+                ('Transfer/sec', []),
+                ('Min latency', []),
+                ('Mean latency', []),
+                ('Max latency', []),
+                ('Latency variation', []),
+            ))
+
+        variations = benchmark['variations']
+        i = 0
+
+        for concurrency in data['concurrency_levels']:
+            for msgsize in data['payload_size_levels']:
+                variation = variations[i]
+                i += 1
+
+                brecords['Requests/sec'].append(
+                    variation['rps'])
+                brecords['Transfer/sec'].append(
+                    '{}MiB'.format(variation['transfer']))
+                brecords['Min latency'].append(
+                    '{}ms'.format(variation['latency_min']))
+                brecords['Mean latency'].append(
+                    '{}ms'.format(variation['latency_mean']))
+                brecords['Max latency'].append(
+                    '{}ms'.format(variation['latency_max']))
+                brecords['Latency variation'].append('{}ms ({}%)'.format(
+                    variation['latency_std'], variation['latency_cv']))
+
+    vc = len(data['concurrency_levels']) * len(data['payload_size_levels'])
+
+    btypes_html = '\n'.join(['<th colspan="{span}">{btype}</th>'.format(
+                                span=vc, btype=bt) for bt in btypes])
+
+    variations_th = []
+    for bt in btypes:
+        for concurrency in data['concurrency_levels']:
+            for msgsize in data['payload_size_levels']:
+                variations_th.append(
+                    '<th>{}</th>'.format(
+                        '{}KiB, c {}'.format(msgsize / 1024, concurrency)
+                    )
+                )
+
+    record_trs = []
+    for bname, entry in entries.items():
+        record_trs.append(
+            '''<tr class="benchmark">
+                <td>{name}</td>
+                {empty_tds}
+            </tr>'''.format(name=bname, empty_tds='<td></td>' * vc)
+        )
+
+        for bt in btypes:
+            for metric, metric_data in entry['benchmarks'][bt].items():
+                record_trs.append(
+                    '<tr class="metric"><td>{metric}</td>{data}</tr>'.format(
+                        metric=metric,
+                        data='\n'.join('<td>{}</td>'.format(v)
+                                       for v in metric_data)
+                    )
+                )
+
+    table = '''
+        <table class="results">
+            <thead>
+                <tr>
+                    <th rowspan="2"></th>
+                    {btypes}
+                </tr>
+                <tr>
+                    {variations_header}
+                </tr>
+            </thead>
+            <tbody>
+                {records}
+            </tbody>
+        </table>
+    '''.format(btypes=btypes_html, variations_header='\n'.join(variations_th),
+               records='\n'.join(record_trs))
+
+    output = tpl.safe_substitute(
+        __BENCHMARK_DATE__=date,
+        __BENCHMARK_PLATFORM__=platform,
+        __BENCHMARK_DATA_TABLE__=table,
+        __BENCHMARK_DATA_JSON__=json.dumps(data)
+    )
+
+    with open(target_file, 'wt') as f:
+        f.write(output)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--duration', '-D', default=30, type=int,
+                        help='duration of each benchmark in seconds')
+    parser.add_argument('--benchmarks', type=str,
+                        help='comma-separated list of benchmarks to run ' +
+                             '(regular expressions are supported)')
+    parser.add_argument('--concurrency-levels', type=int, default=[10],
+                        nargs='+',
+                        help='a list of concurrency levels to use')
+    parser.add_argument('--payload-size-levels', type=int, nargs='+',
+                        default=[1024, 10240, 102400],
+                        help='comma-separated list of message size levels ' +
+                             'to use (in bytes)')
+    parser.add_argument('--save-json', '-J', type=str,
+                        help='path to save benchmark results in JSON format')
+    parser.add_argument('--save-html', '-H', type=str,
+                        help='path to save benchmark results in HTML format')
+    parser.add_argument('--docker-timeout', type=int, default=60,
+                        help='The amount of time to wait before considering ' +
+                             'the docker container unconnectable')
+    parser.add_argument('--docker-wait', type=int, default=0,
+                        help='The amount of time to wait for the docker ' +
+                             'container to start before testing the ' +
+                             'connection. Useful for when the webserver ' +
+                             'running in docker takes a little bit of ' +
+                             'time to start.')
+    args = parser.parse_args()
+
+    if not os.path.exists(_socket):
+        os.mkdir(_socket)
+
+    if args.benchmarks:
+        benchmarks_to_run = [re.compile(b) for b in args.benchmarks.split(',')]
+    else:
+        benchmarks_to_run = [re.compile(re.escape(b['name']))
+                             for b in benchmarks]
+
+    benchmarks_data = []
+
+    variations = []
+
+    for concurrency in sorted(args.concurrency_levels):
+        for msgsize in sorted(args.payload_size_levels):
+            variations.append({
+                'title': '{}kb messages, concurrency {}'.format(
+                    round(msgsize / 1024, 1), concurrency
+                ),
+                'concurrency': concurrency,
+                'payload_size': msgsize,
+                'args': [
+                    '--msize={}'.format(msgsize),
+                    '--concurrency={}'.format(concurrency)
+                ]
+            })
+
+    warmup_concurrency = max(args.concurrency_levels)
+    warmup = ['--msize=1024', '--duration=10',
+              '--concurrency={}'.format(warmup_concurrency)]
+
+    for benchmark in benchmarks:
+        if not any(b.match(benchmark['name']) for b in benchmarks_to_run):
+            continue
+
+        print(benchmark['title'])
+        print('=' * len(benchmark['title']))
+        print()
+
+        #print('Starting server...')
+        #server_cmd = server_base + benchmark['server']
+        #print('  ' + ' '.join(server_cmd))
+        #start_and_wait_for_server(server_cmd, benchmark['server_address'],
+        #                          timeout=args.docker_timeout,
+        #                          docker_wait=args.docker_wait)
+        #print()
+
+        print('Warming up server...')
+        warmup_cmd = benchmark['client'] + warmup
+        print(' '.join(warmup_cmd))
+        subprocess.check_output(warmup_cmd)
+        print()
+
+        duration = args.duration
+
+        benchmark_data = {
+            'name': benchmark['name'],
+            'variations': []
+        }
+
+        benchmarks_data.append(benchmark_data)
+
+        try:
+            for variation in variations:
+                title = 'BENCHMARK: {}'.format(variation['title'])
+                print(title)
+                print('-' * len(title))
+                client_cmd = benchmark['client'] + variation['args']
+                client_cmd += ['--duration={}'.format(duration)]
+                print(' '.join(client_cmd))
+                output = subprocess.check_output(
+                            client_cmd, universal_newlines=True)
+                data = json.loads(output)
+
+                format_data = data.copy()
+
+                format_data['latency_percentiles'] = '; '.join(
+                    '{}% under {}ms'.format(*v)
+                    for v in data['latency_percentiles'])
+
+                output = textwrap.dedent('''\
+                {messages} messages in {duration} seconds
+                Latency: min {latency_min}ms; max {latency_max}ms; mean {latency_mean}ms; std {latency_std}ms ({latency_cv}%);
+                Latency distribution: {latency_percentiles}
+                Requests/sec: {rps}
+                Transfer/sec: {transfer}MiB
+                ''').format(duration=duration, **format_data)
+
+                print(output)
+
+                benchmark_data['variations'].append(data)
+        finally:
+            pass
+        #    kill_server()
+
+        #print()
+
+    if args.save_json or args.save_html:
+        info_cmd = ['python', 'servers/platinfo.py']
+        print('  ' + ' '.join(info_cmd))
+        output = subprocess.check_output(info_cmd, universal_newlines=True)
+        platform_info = json.loads(output)
+
+        benchmarks_data = {
+            'date': '%Y-%m-%dT%H:%M:%S%z',
+            'duration': args.duration,
+            'platform': platform_info,
+            'concurrency_levels': args.concurrency_levels,
+            'payload_size_levels': args.payload_size_levels,
+            'benchmarks': benchmarks_data,
+        }
+
+    if args.save_json:
+        with open(args.save_json, 'w') as f:
+            json.dump(benchmarks_data, f)
+
+    if args.save_html:
+        print('Saving')
+        format_report(benchmarks_data, args.save_html)
+
+
+if __name__ == '__main__':
+    main()
