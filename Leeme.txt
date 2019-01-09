@@ -1,7 +1,16 @@
+# Checkear el server python
+
 0. Create virtualenv and pip Install requirements
 1. Install wrk -> brew install wrk
 2. Run the server -> python asyncio_http_server.py --type uvloop+httptools
 3. Run the client -> python run_benchmarks_marco --save-html=report.html --benchmarks=http-uvloop-httptools
+
+# Checkear el server go
+
+1. Run the server -> go run servers/goku_server.go
+2. Run the client -> python run_benchmarks_marco --save-html=report.html --benchmarks=http-golang
+
+(comparar rendimiento)
 
 # si quieres checkear un endpoint existente por GET:
 

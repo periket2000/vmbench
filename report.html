@@ -65,7 +65,7 @@
 
 <body>
 
-<p><em>Tue Jan  8 09:50:51 2019</em></p>
+<p><em>Wed Jan  9 17:05:22 2019</em></p>
 
 <h1>Server Performance Benchmark Report</h1>
 
@@ -86,37 +86,23 @@ Test environment: Darwin 18.0.0 (None, x86_64) on i386.
             <thead>
                 <tr>
                     <th rowspan="2"></th>
-                    <th colspan="3">http</th>
+                    <th colspan="1">http</th>
                 </tr>
                 <tr>
                     <th>1.0KiB, c 10</th>
-<th>10.0KiB, c 10</th>
-<th>100.0KiB, c 10</th>
                 </tr>
             </thead>
             <tbody>
                 <tr class="benchmark">
-                <td>uvloop httptools</td>
-                <td></td><td></td><td></td>
+                <td>golang</td>
+                <td></td>
             </tr>
-<tr class="metric"><td>Requests/sec</td><td>44974.37</td>
-<td>34549.56</td>
-<td>18748.91</td></tr>
-<tr class="metric"><td>Transfer/sec</td><td>46.79MiB</td>
-<td>339.64MiB</td>
-<td>1832.18MiB</td></tr>
-<tr class="metric"><td>Min latency</td><td>0.063ms</td>
-<td>0.051ms</td>
-<td>0.124ms</td></tr>
-<tr class="metric"><td>Mean latency</td><td>0.213ms</td>
-<td>0.283ms</td>
-<td>0.527ms</td></tr>
-<tr class="metric"><td>Max latency</td><td>6.513ms</td>
-<td>5.576ms</td>
-<td>9.283ms</td></tr>
-<tr class="metric"><td>Latency variation</td><td>0.077ms (36.25%)</td>
-<td>0.165ms (58.36%)</td>
-<td>0.327ms (62.14%)</td></tr>
+<tr class="metric"><td>Requests/sec</td><td>50081.87</td></tr>
+<tr class="metric"><td>Transfer/sec</td><td>7.31MiB</td></tr>
+<tr class="metric"><td>Min latency</td><td>0.037ms</td></tr>
+<tr class="metric"><td>Mean latency</td><td>0.172ms</td></tr>
+<tr class="metric"><td>Max latency</td><td>7.939ms</td></tr>
+<tr class="metric"><td>Latency variation</td><td>0.15ms (86.86%)</td></tr>
             </tbody>
         </table>
     
@@ -531,7 +517,7 @@ var focusText = focus.append('text')
             .attr('alignment-baseline', 'middle');
 };
 
-var data = {"date": "%Y-%m-%dT%H:%M:%S%z", "duration": 30, "platform": {"cpu": "i386", "arch": "x86_64", "system": "Darwin 18.0.0", "distribution": null}, "concurrency_levels": [10], "payload_size_levels": [1024, 10240, 102400], "benchmarks": [{"name": "http-uvloop-httptools", "variations": [{"messages": 1353711, "transfer": 46.79, "rps": 44974.37, "latency_min": 0.063, "latency_mean": 0.213, "latency_max": 6.513, "latency_std": 0.077, "latency_cv": 36.25, "latency_percentiles": [[25.0, 0.208], [50.0, 0.223], [75.0, 0.23], [90.0, 0.246], [99.0, 0.383], [99.99, 3.097]]}, {"messages": 1040016, "transfer": 339.64, "rps": 34549.56, "latency_min": 0.051, "latency_mean": 0.283, "latency_max": 5.576, "latency_std": 0.165, "latency_cv": 58.36, "latency_percentiles": [[25.0, 0.22], [50.0, 0.243], [75.0, 0.298], [90.0, 0.41], [99.0, 0.909], [99.99, 3.763]]}, {"messages": 562557, "transfer": 1832.18, "rps": 18748.91, "latency_min": 0.124, "latency_mean": 0.527, "latency_max": 9.283, "latency_std": 0.327, "latency_cv": 62.14, "latency_percentiles": [[25.0, 0.314], [50.0, 0.488], [75.0, 0.622], [90.0, 0.771], [99.0, 1.72], [99.99, 6.736]]}]}]};
+var data = {"date": "%Y-%m-%dT%H:%M:%S%z", "duration": 30, "platform": {"cpu": "i386", "arch": "x86_64", "system": "Darwin 18.0.0", "distribution": null}, "concurrency_levels": [10], "payload_size_levels": [1024], "benchmarks": [{"name": "http-golang", "variations": [{"messages": 1507473, "transfer": 7.31, "rps": 50081.87, "latency_min": 0.037, "latency_mean": 0.172, "latency_max": 7.939, "latency_std": 0.15, "latency_cv": 86.86, "latency_percentiles": [[25.0, 0.127], [50.0, 0.159], [75.0, 0.191], [90.0, 0.234], [99.0, 0.463], [99.99, 6.305]]}]}]};
 
 var tcpData = {
     payload_size_levels: data.payload_size_levels,
