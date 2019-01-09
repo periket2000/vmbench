@@ -78,6 +78,8 @@ class HttpProtocol(asyncio.Protocol):
 
     def connection_made(self, transport):
         self._transport = transport
+        peername = transport.get_extra_info('peername')
+        print('Connection from {}'.format(peername))
         sock = transport.get_extra_info('socket')
         try:
             sock.setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
@@ -103,27 +105,10 @@ class HttpProtocol(asyncio.Protocol):
         self._current_parser = None
         self._current_request = None
 
+
 def abort(msg):
     print(msg, file=sys.stderr)
     sys.exit(1)
-
-
-def aiohttp_server(loop, addr):
-    async def handle(request):
-        payload_size = int(request.match_info.get('size', 1024))
-        resp = _RESP_CACHE.get(payload_size)
-        if resp is None:
-            resp = b'X' * payload_size
-            _RESP_CACHE[payload_size] = resp
-        return web.Response(body=resp)
-
-    app = web.Application(loop=loop)
-    app.router.add_route('GET', '/{size}', handle)
-    app.router.add_route('GET', '/', handle)
-    handler = app.make_handler()
-    server = loop.create_server(handler, *addr)
-
-    return server
 
 
 def httptools_server(loop, addr):
@@ -144,16 +129,16 @@ if __name__ == '__main__':
         else:
             server_type = args.type
 
-        if server_type in {'aiohttp', 'httptools'}:
+        if server_type in {'httptools'}:
             if not loop_type:
-                loop_type = 'asyncio'
+                loop_type = 'uvloop'
         else:
             loop_type = None
 
-        if loop_type not in {'asyncio', 'uvloop'}:
+        if loop_type not in {'uvloop'}:
             abort('unrecognized loop type: {}'.format(loop_type))
 
-        if server_type not in {'aiohttp', 'httptools'}:
+        if server_type not in {'httptools'}:
             abort('unrecognized server type: {}'.format(server_type))
 
         if loop_type:
@@ -168,14 +153,9 @@ if __name__ == '__main__':
         asyncio.set_event_loop(loop)
         loop.set_debug(False)
 
-    unix = False
-    if args.addr.startswith('file:'):
-        unix = True
-        addr = args.addr[5:]
-    else:
-        addr = args.addr.split(':')
-        addr[1] = int(addr[1])
-        addr = tuple(addr)
+    addr = args.addr.split(':')
+    addr[1] = int(addr[1])
+    addr = tuple(addr)
 
     server_factory = globals()['{}_server'.format(server_type)]
 
@@ -188,3 +168,4 @@ if __name__ == '__main__':
         finally:
             server.close()
             loop.close()
+
